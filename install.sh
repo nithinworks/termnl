@@ -136,7 +136,7 @@ echo -e "  ${ICON_SUCCESS} Shell configured"
 # Ask about auto-launch
 echo ""
 echo -ne "  ${ICON_ARROW} Auto-launch termnl when you open a terminal? ${CLR_WARN}[y/N]${CLR_RESET} "
-read -r autolaunch_choice
+read -r autolaunch_choice < /dev/tty
 
 if [[ "$autolaunch_choice" =~ ^[Yy]$ ]]; then
     configure_autolaunch "$HOME/.zprofile"
