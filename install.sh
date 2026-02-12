@@ -17,8 +17,8 @@ ICON_ARROW="${CLR_INFO}→${CLR_RESET}"
 ANIM_FRAMES=("⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏")
 
 APP_DIR="$HOME/.termnl"
-# REPO_URL="https://github.com/junaid-mahmood/nlsh.git"
-SOURCE_PATH="/Users/naganithin/Documents/termnl"
+REPO_URL="https://github.com/nithinworks/termnl"
+TMP_DIR="/tmp/termnl-install"
 
 # Animated spinner
 show_spinner() {
@@ -68,15 +68,13 @@ echo ""
 echo -e "Installing termnl..."
 
 if [ -d "$APP_DIR" ]; then
-    # (cd "$APP_DIR" && git pull --quiet) &
-    (rsync -a --quiet "$SOURCE_PATH/" "$APP_DIR/") &
+    (rm -rf "$TMP_DIR" && mkdir -p "$TMP_DIR" && curl -sL "$REPO_URL/archive/main.tar.gz" | tar xz -C "$TMP_DIR" --strip-components=1 && rsync -a --quiet "$TMP_DIR/" "$APP_DIR/" && rm -rf "$TMP_DIR") &
     show_spinner $! "Updating files"
     echo -e "\r  ${ICON_SUCCESS} Updated successfully                         "
 else
-    # git clone --quiet "$REPO_URL" "$APP_DIR" &
-    (mkdir -p "$APP_DIR" && rsync -a --quiet "$SOURCE_PATH/" "$APP_DIR/") &
-    show_spinner $! "Copying files"
-    echo -e "\r  ${ICON_SUCCESS} Files copied successfully                    "
+    (rm -rf "$TMP_DIR" && mkdir -p "$TMP_DIR" "$APP_DIR" && curl -sL "$REPO_URL/archive/main.tar.gz" | tar xz -C "$TMP_DIR" --strip-components=1 && rsync -a --quiet "$TMP_DIR/" "$APP_DIR/" && rm -rf "$TMP_DIR") &
+    show_spinner $! "Downloading files"
+    echo -e "\r  ${ICON_SUCCESS} Files downloaded successfully                "
 fi
 
 cd "$APP_DIR"

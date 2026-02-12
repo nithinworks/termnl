@@ -232,8 +232,8 @@ def update_termnl():
     print(f"\033[2mCurrent version: v{__version__}\033[0m")
     
     app_dir = os.path.expanduser("~/.termnl")
-    source_path = "/Users/naganithin/Documents/termnl"
-    # git_repo = "https://github.com/username/termnl.git"
+    repo_url = "https://github.com/nithinworks/termnl"
+    tmp_dir = "/tmp/termnl-update"
     
     # Create backup directory
     backup_dir = os.path.join(app_dir, "backup")
@@ -241,57 +241,59 @@ def update_termnl():
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_file = os.path.join(backup_dir, f"termnl_{timestamp}.py")
-    
     current_file = os.path.join(app_dir, "termnl.py")
     
     try:
-        # Check new version before updating
+        # Check latest version from GitHub
+        result = subprocess.run(
+            ["curl", "-sL", f"{repo_url}/raw/main/termnl.py"],
+            capture_output=True, text=True
+        )
+        
         new_version = None
-        if os.path.exists(source_path):
-            source_file = os.path.join(source_path, "termnl.py")
-            if os.path.exists(source_file):
-                new_version = get_new_version(source_file)
-                if new_version:
-                    print(f"\033[2mLatest version: v{new_version}\033[0m")
-                    
-                    # Check if already up to date
-                    if new_version == __version__:
-                        print("\n\033[32m✓ Already up to date!\033[0m\n")
-                        return
+        if result.returncode == 0 and result.stdout:
+            for line in result.stdout.split("\n"):
+                if line.startswith("__version__"):
+                    new_version = line.split("=")[1].strip().strip('"').strip("'")
+                    break
+        
+        if new_version:
+            print(f"\033[2mLatest version: v{new_version}\033[0m")
+            if new_version == __version__:
+                print("\n\033[32m✓ Already up to date!\033[0m\n")
+                return
         
         # Backup current version
         if os.path.exists(current_file):
             shutil.copy2(current_file, backup_file)
             print(f"\033[2m✓ Backed up current version\033[0m")
         
-        # Update from source
-        print("\033[36mUpdating files...\033[0m")
+        # Download and extract from GitHub
+        print("\033[36mDownloading update...\033[0m")
         
-        # For local development
-        if os.path.exists(source_path):
-            # Copy Python file
-            source_file = os.path.join(source_path, "termnl.py")
-            if os.path.exists(source_file):
-                shutil.copy2(source_file, current_file)
-            
-            # Copy requirements.txt if it exists
-            source_req = os.path.join(source_path, "requirements.txt")
-            dest_req = os.path.join(app_dir, "requirements.txt")
-            if os.path.exists(source_req):
-                shutil.copy2(source_req, dest_req)
-            
-            print("\033[32m✓ Files updated from local source\033[0m")
-        else:
-            # For production (git-based update) - uncomment when ready
-            # os.chdir(app_dir)
-            # result = subprocess.run(["git", "pull"], capture_output=True, text=True)
-            # if result.returncode == 0:
-            #     print("\033[32m✓ Files updated from git\033[0m")
-            # else:
-            #     print(f"\033[31m✗ Git pull failed: {result.stderr}\033[0m")
-            #     return
-            print("\033[31m✗ Source path not found\033[0m")
+        # Clean tmp, download tarball, extract
+        subprocess.run(["rm", "-rf", tmp_dir], capture_output=True)
+        os.makedirs(tmp_dir, exist_ok=True)
+        
+        dl_result = subprocess.run(
+            f"curl -sL {repo_url}/archive/main.tar.gz | tar xz -C {tmp_dir} --strip-components=1",
+            shell=True, capture_output=True, text=True
+        )
+        
+        if dl_result.returncode != 0:
+            print("\033[31m✗ Download failed — check your internet connection\033[0m")
             return
+        
+        # Copy files
+        for filename in ["termnl.py", "requirements.txt"]:
+            src = os.path.join(tmp_dir, filename)
+            dst = os.path.join(app_dir, filename)
+            if os.path.exists(src):
+                shutil.copy2(src, dst)
+        
+        # Clean up tmp
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        print("\033[32m✓ Files updated\033[0m")
         
         # Update dependencies
         print("\033[36mUpdating dependencies...\033[0m")
@@ -301,8 +303,7 @@ def update_termnl():
         if os.path.exists(req_file):
             result = subprocess.run(
                 [venv_pip, "install", "-q", "--upgrade", "-r", req_file],
-                capture_output=True,
-                text=True
+                capture_output=True, text=True
             )
             if result.returncode == 0:
                 print("\033[32m✓ Dependencies updated\033[0m")
@@ -314,7 +315,6 @@ def update_termnl():
         if len(backups) > 5:
             for old_backup in backups[:-5]:
                 os.remove(os.path.join(backup_dir, old_backup))
-            print(f"\033[2m✓ Cleaned up old backups\033[0m")
         
         print("\n\033[32m✓ Update complete!\033[0m")
         if new_version and new_version != __version__:
