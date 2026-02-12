@@ -68,11 +68,11 @@ echo ""
 echo -e "Installing termnl..."
 
 if [ -d "$APP_DIR" ]; then
-    (rm -rf "$TMP_DIR" && mkdir -p "$TMP_DIR" && curl -sL "$REPO_URL/archive/main.tar.gz" | tar xz -C "$TMP_DIR" --strip-components=1 && rsync -a --quiet "$TMP_DIR/" "$APP_DIR/" && rm -rf "$TMP_DIR") &
+    (rm -rf "$TMP_DIR" && mkdir -p "$TMP_DIR" && curl -sL "$REPO_URL/archive/main.tar.gz" | tar xz -C "$TMP_DIR" --strip-components=1 && cp -r "$TMP_DIR"/. "$APP_DIR/" && rm -rf "$TMP_DIR") &
     show_spinner $! "Updating files"
     echo -e "\r  ${ICON_SUCCESS} Updated successfully                         "
 else
-    (rm -rf "$TMP_DIR" && mkdir -p "$TMP_DIR" "$APP_DIR" && curl -sL "$REPO_URL/archive/main.tar.gz" | tar xz -C "$TMP_DIR" --strip-components=1 && rsync -a --quiet "$TMP_DIR/" "$APP_DIR/" && rm -rf "$TMP_DIR") &
+    (rm -rf "$TMP_DIR" && mkdir -p "$TMP_DIR" "$APP_DIR" && curl -sL "$REPO_URL/archive/main.tar.gz" | tar xz -C "$TMP_DIR" --strip-components=1 && cp -r "$TMP_DIR"/. "$APP_DIR/" && rm -rf "$TMP_DIR") &
     show_spinner $! "Downloading files"
     echo -e "\r  ${ICON_SUCCESS} Files downloaded successfully                "
 fi
