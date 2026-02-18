@@ -34,7 +34,13 @@ try:
     readline.read_history_file(_history_file)
 except OSError:
     pass
-atexit.register(readline.write_history_file, _history_file)
+def _save_history():
+    try:
+        readline.write_history_file(_history_file)
+    except OSError:
+        pass
+
+atexit.register(_save_history)
 
 learning_mode = False
 provider = "gemini"
@@ -584,6 +590,8 @@ def _uninstall():
     confirm = input("\033[33mRemove termnl? [y/N]\033[0m ")
     if confirm.lower() != "y":
         return
+    # Deregister the history-save callback before deleting files
+    atexit.unregister(_save_history)
     install_dir = os.path.expanduser("~/.termnl")
     bin_path = os.path.expanduser("~/.local/bin/termnl")
     if os.path.exists(install_dir):
