@@ -6,7 +6,9 @@ import sys
 import signal
 import shutil
 import subprocess
+import platform
 import readline
+import atexit
 from collections import deque, namedtuple
 from datetime import datetime
 
@@ -24,6 +26,15 @@ signal.signal(signal.SIGINT, _on_sigint)
 _base_dir = os.path.dirname(os.path.abspath(__file__))
 _env_file = os.path.join(_base_dir, ".env")
 _cfg_file = os.path.join(_base_dir, ".config")
+_os_shell = "macOS/zsh" if platform.system() == "Darwin" else "Linux/bash"
+
+# --- Readline Persistence ---
+_history_file = os.path.join(_base_dir, ".readline_history")
+try:
+    readline.read_history_file(_history_file)
+except OSError:
+    pass
+atexit.register(readline.write_history_file, _history_file)
 
 learning_mode = False
 provider = "gemini"
@@ -292,9 +303,8 @@ def _classify_input(text: str) -> str:
     # Natural language signals — reduce score
     nl_words = {"how", "what", "why", "where", "when", "who", "which",
                 "can", "could", "would", "should", "please", "help",
-                "show", "list", "find", "create", "delete", "make",
-                "move", "copy", "rename", "open", "install", "update",
-                "tell", "give", "is", "are", "do", "does", "the", "my"}
+                "tell", "give", "is", "are", "do", "does", "the", "my",
+                "me", "all", "about", "need", "want"}
     
     tokens_lower = set(stripped.lower().split())
     nl_overlap = len(tokens_lower & nl_words)
@@ -318,8 +328,8 @@ def _classify_input(text: str) -> str:
         score -= 3.0
 
     # Short, all-lowercase inputs with no NL signals lean toward shell
-    # (e.g., "docker ps", "kubectl logs", "brew update")
-    if word_count <= 2 and nl_overlap == 0 and stripped.islower():
+    # (e.g., "docker ps", "kubectl get pods", "brew update")
+    if word_count <= 3 and nl_overlap == 0 and stripped.islower():
         score += 1.0
 
     # cd is always shell
@@ -337,7 +347,7 @@ def _translate(user_input: str, cwd: str) -> dict:
     Returns dict with 'commands' list and optional 'explanation'.
     """
     ctx = _render_context()
-    prompt = f"""Convert the following request into executable macOS/zsh commands.
+    prompt = f"""Convert the following request into executable {_os_shell} commands.
 Working directory: {cwd}
 
 Session context:
@@ -769,22 +779,21 @@ def main():
 
         try:
             cwd = os.getcwd()
-            prompt_prefix = f"\033[32m{os.path.basename(cwd)}\033[0m"
+            # Wrap ANSI escapes in \001..\002 so readline knows their display width is 0.
+            # Without this, up-arrow history recall corrupts the prompt display.
+            prompt_prefix = f"\001\033[32m\002{os.path.basename(cwd)}\001\033[0m\002"
 
             if learning_mode:
-                prompt_prefix += " \033[2m[learn]\033[0m"
+                prompt_prefix += " \001\033[2m\002[learn]\001\033[0m\002"
             if provider == "openrouter" and openrouter_model != "google/gemini-2.5-flash":
                 short_model = openrouter_model.rsplit("/", 1)[-1]
-                prompt_prefix += f" \033[2m[{short_model}]\033[0m"
+                prompt_prefix += f" \001\033[2m\002[{short_model}]\001\033[0m\002"
 
             prompt_prefix += " > "
             user_input = input(prompt_prefix).strip()
 
             if not user_input:
                 continue
-
-            # --- Classify input ---
-            kind = _classify_input(user_input)
 
             # --- Exit ---
             if user_input in ("exit", "quit"):
@@ -793,7 +802,7 @@ def main():
 
             # --- CD (special: changes process state) ---
             if user_input == "cd" or user_input.startswith("cd "):
-                _handle_cd(user_input[2:] if user_input.startswith("cd") else "")
+                _handle_cd(user_input[3:])
                 continue
 
             # --- Builtins (dispatch table) ---
@@ -807,6 +816,9 @@ def main():
                 if cmd:
                     _handle_force_run(cmd)
                 continue
+
+            # --- Classify input (only reached for non-builtins) ---
+            kind = _classify_input(user_input)
 
             # --- Shell passthrough ---
             if kind == "shell":

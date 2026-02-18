@@ -1,164 +1,209 @@
 #!/bin/bash
 set -e
 
-# Color scheme
-CLR_RESET='\033[0m'
-CLR_BOLD='\033[1m'
-CLR_DIM='\033[2m'
-CLR_SUCCESS='\033[0;32m'
-CLR_INFO='\033[0;36m'
-CLR_WARN='\033[1;33m'
-CLR_ERROR='\033[0;31m'
+# --- Theme ---
+RST='\033[0m'
+B='\033[1m'
+DIM='\033[2m'
+GRN='\033[0;32m'
+CYN='\033[0;36m'
+YLW='\033[1;33m'
+RED='\033[0;31m'
 
-# UI Elements
-ICON_SUCCESS="${CLR_SUCCESS}✓${CLR_RESET}"
-ICON_ERROR="${CLR_ERROR}✗${CLR_RESET}"
-ICON_ARROW="${CLR_INFO}→${CLR_RESET}"
-ANIM_FRAMES=("⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏")
+OK="${GRN}✓${RST}"
+FAIL="${RED}✗${RST}"
+ARROW="${CYN}→${RST}"
+SPIN_CHARS=("⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏")
 
 APP_DIR="$HOME/.termnl"
-REPO_URL="https://github.com/nithinworks/termnl"
-TMP_DIR="/tmp/termnl-install"
+REPO="https://github.com/nithinworks/termnl"
+STAGING="/tmp/termnl-install-$$"
 
-# Animated spinner
-show_spinner() {
-    local task_pid=$1
-    local status_msg=$2
-    local frame_idx=0
-    
-    while kill -0 $task_pid 2>/dev/null; do
-        printf "\r  ${CLR_INFO}${ANIM_FRAMES[$frame_idx]}${CLR_RESET} ${status_msg}..."
-        frame_idx=$(( (frame_idx + 1) % 10 ))
-        sleep 0.1
+# --- Helpers ---
+
+spin() {
+    local pid=$1 msg=$2 i=0
+    while kill -0 "$pid" 2>/dev/null; do
+        printf "\r  ${CYN}${SPIN_CHARS[$i]}${RST} %s..." "$msg"
+        i=$(( (i + 1) % ${#SPIN_CHARS[@]} ))
+        sleep 0.08
     done
-    
-    wait $task_pid
+    wait "$pid"
     return $?
 }
 
+bail() { echo -e "  ${FAIL} $1"; exit 1; }
 
-# Header display
+# --- Pre-flight Checks ---
+
 clear
 echo ""
-echo -e "${CLR_BOLD}"
-cat << "EOF"
-▗▄▄▄▖▗▄▄▄▖▗▄▄▖ ▗▖  ▗▖▗▖  ▗▖▗▖   
-  █  ▐▌   ▐▌ ▐▌▐▛▚▞▜▌▐▛▚▖▐▌▐▌   
-  █  ▐▛▀▀▘▐▛▀▚▖▐▌  ▐▌▐▌ ▝▜▌▐▌   
-  █  ▐▙▄▄▖▐▌ ▐▌▐▌  ▐▌▐▌  ▐▌▐▙▄▄▖                                                                                                                                                                                                                                                                                                                                                        
-EOF
-echo -e "${CLR_RESET}"
-echo -e "  ${CLR_DIM}The terminal for everyone | Installation${CLR_RESET}"
+echo -e "${B}"
+cat << "BANNER"
+$$$$$$$$\ $$$$$$$$\ $$$$$$$\  $$\      $$\ $$\   $$\ $$\       
+\__$$  __|$$  _____|$$  __$$\ $$$\    $$$ |$$$\  $$ |$$ |      
+   $$ |   $$ |      $$ |  $$ |$$$$\  $$$$ |$$$$\ $$ |$$ |      
+   $$ |   $$$$$\    $$$$$$$  |$$\$$\$$ $$ |$$ $$\$$ |$$ |      
+   $$ |   $$  __|   $$  __$$< $$ \$$$  $$ |$$ \$$$$ |$$ |      
+   $$ |   $$ |      $$ |  $$ |$$ |\$  /$$ |$$ |\$$$ |$$ |      
+   $$ |   $$$$$$$$\ $$ |  $$ |$$ | \_/ $$ |$$ | \$$ |$$$$$$$$\ 
+   \__|   \________|\__|  \__|\__|     \__|\__|  \__|\________|
+BANNER
+echo -e "${RST}"
+echo -e "  ${DIM}The terminal for everyone | Installation${RST}"
 echo ""
-echo -e "  ${CLR_INFO}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${CLR_RESET}"
+echo -e "  ${DIM}──────────────────────────────────────────────${RST}"
 echo ""
 
-# Step 1: System check
-echo -e "Checking system requirements..."
+echo -e "Preflight checks..."
 
-if ! command -v python3 &> /dev/null; then
-    echo -e "  ${ICON_ERROR} Python 3 is required"
-    exit 1
+# OS check
+case "$(uname -s)" in
+    Darwin|Linux) ;;
+    *) bail "Unsupported OS. termnl supports macOS and Linux." ;;
+esac
+
+# curl check
+command -v curl &>/dev/null || bail "curl is required. Install it first (brew install curl / apt install curl)."
+
+# Python check
+if ! command -v python3 &>/dev/null; then
+    bail "Python 3.10+ is required. Install it first."
 fi
 
-PY_VER=$(python3 --version | cut -d' ' -f2)
-echo -e "  ${ICON_SUCCESS} Python ${PY_VER} found"
+PY_VER=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+PY_MAJOR="${PY_VER%%.*}"
+PY_MINOR="${PY_VER##*.}"
+
+if [ "$PY_MAJOR" -lt 3 ] || { [ "$PY_MAJOR" -eq 3 ] && [ "$PY_MINOR" -lt 10 ]; }; then
+    bail "Python 3.10+ required (found ${PY_VER})"
+fi
+
+echo -e "  ${OK} Python ${PY_VER}"
+echo -e "  ${OK} curl available"
+echo -e "  ${OK} $(uname -s) detected"
+
+# --- Download ---
 
 echo ""
 echo -e "Installing termnl..."
 
-if [ -d "$APP_DIR" ]; then
-    (rm -rf "$TMP_DIR" && mkdir -p "$TMP_DIR" && curl -sL "$REPO_URL/archive/main.tar.gz" | tar xz -C "$TMP_DIR" --strip-components=1 && cp -r "$TMP_DIR"/. "$APP_DIR/" && rm -rf "$TMP_DIR") &
-    show_spinner $! "Updating files"
-    echo -e "\r  ${ICON_SUCCESS} Updated successfully                         "
+fetch_release() {
+    rm -rf "$STAGING"
+    mkdir -p "$STAGING" "$APP_DIR"
+    curl -sL "$REPO/archive/main.tar.gz" | tar xz -C "$STAGING" --strip-components=1
+    # Preserve user config (.env, .config) if upgrading
+    for keep in .env .config; do
+        [ -f "$APP_DIR/$keep" ] && cp "$APP_DIR/$keep" "$STAGING/$keep.bak" 2>/dev/null || true
+    done
+    cp -r "$STAGING"/. "$APP_DIR/"
+    # Restore user config if they existed
+    for keep in .env .config; do
+        [ -f "$APP_DIR/$keep.bak" ] && mv "$APP_DIR/$keep.bak" "$APP_DIR/$keep" 2>/dev/null || true
+    done
+    rm -rf "$STAGING"
+}
+
+if [ -d "$APP_DIR/venv" ]; then
+    fetch_release &
+    spin $! "Updating files"
+    echo -e "\r  ${OK} Updated successfully                         "
 else
-    (rm -rf "$TMP_DIR" && mkdir -p "$TMP_DIR" "$APP_DIR" && curl -sL "$REPO_URL/archive/main.tar.gz" | tar xz -C "$TMP_DIR" --strip-components=1 && cp -r "$TMP_DIR"/. "$APP_DIR/" && rm -rf "$TMP_DIR") &
-    show_spinner $! "Downloading files"
-    echo -e "\r  ${ICON_SUCCESS} Files downloaded successfully                "
+    fetch_release &
+    spin $! "Downloading files"
+    echo -e "\r  ${OK} Files downloaded                              "
 fi
+
+# --- Python Environment ---
 
 cd "$APP_DIR"
 
-# Setup Python environment
-python3 -m venv venv &> /dev/null
+if [ ! -d "venv" ]; then
+    python3 -m venv venv &>/dev/null
+fi
+
 source venv/bin/activate
-pip install --quiet --upgrade pip &> /dev/null
+pip install --quiet --upgrade pip &>/dev/null
 
 pip install --quiet -r requirements.txt &
-show_spinner $! "Installing dependencies"
-echo -e "\r  ${ICON_SUCCESS} Dependencies installed                     "
+spin $! "Installing dependencies"
+echo -e "\r  ${OK} Dependencies installed                     "
+
+# --- CLI Wrapper ---
 
 echo ""
 echo -e "Configuring shell..."
 
 mkdir -p "$HOME/.local/bin"
 
-cat > "$HOME/.local/bin/termnl" << 'EOF'
-#!/bin/bash
-source "$HOME/.termnl/venv/bin/activate"
-python "$HOME/.termnl/termnl.py" "$@"
-EOF
+cat > "$HOME/.local/bin/termnl" << 'WRAPPER'
+#!/usr/bin/env bash
+set -e
+TERMNL_HOME="${TERMNL_HOME:-$HOME/.termnl}"
+source "$TERMNL_HOME/venv/bin/activate"
+exec python "$TERMNL_HOME/termnl.py" "$@"
+WRAPPER
 
 chmod +x "$HOME/.local/bin/termnl"
 
-configure_path() {
-    local config_file="$1"
-    
-    touch "$config_file"
-    
-    if ! grep -q '.local/bin' "$config_file" 2>/dev/null; then
-        echo '' >> "$config_file"
-        echo '# termnl - PATH configuration' >> "$config_file"
-        echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$config_file"
+# --- Shell RC Patching ---
+
+patch_shell_rc() {
+    local rc="$1" want_autolaunch="$2"
+    [ -f "$rc" ] || return 0
+
+    # Ensure ~/.local/bin is on PATH
+    if ! grep -q '.local/bin' "$rc" 2>/dev/null; then
+        printf '\n# Added by termnl\nexport PATH="$HOME/.local/bin:$PATH"\n' >> "$rc"
+    fi
+
+    # Optionally add auto-launch
+    if [ "$want_autolaunch" = "1" ] && ! grep -q 'termnl # auto-launch' "$rc" 2>/dev/null; then
+        {
+            echo ''
+            echo '# termnl - auto-launch on terminal start'
+            echo '[ -t 0 ] && [ -z "$TERMNL_RUNNING" ] && [ -x "$HOME/.local/bin/termnl" ] && export TERMNL_RUNNING=1 && termnl # auto-launch'
+        } >> "$rc"
     fi
 }
-
-configure_autolaunch() {
-    local config_file="$1"
-    
-    if ! grep -q 'termnl # auto-launch' "$config_file" 2>/dev/null; then
-        echo '' >> "$config_file"
-        echo '# termnl - auto-launch on terminal start' >> "$config_file"
-        echo '[ -t 0 ] && [ -z "$TERMNL_RUNNING" ] && [ -x "$HOME/.local/bin/termnl" ] && export TERMNL_RUNNING=1 && termnl # auto-launch' >> "$config_file"
-    fi
-}
-
-# Always configure PATH
-configure_path "$HOME/.zprofile"
-configure_path "$HOME/.zshrc"
-configure_path "$HOME/.bashrc"
-configure_path "$HOME/.bash_profile"
 
 export PATH="$HOME/.local/bin:$PATH"
 
-echo -e "  ${ICON_SUCCESS} Shell configured"
+echo -e "  ${OK} Shell configured"
 
-# Ask about auto-launch
+# --- Auto-launch prompt ---
+
 echo ""
-echo -ne "  ${ICON_ARROW} Auto-launch termnl when you open a terminal? ${CLR_WARN}[y/N]${CLR_RESET} "
+echo -ne "  ${ARROW} Auto-launch termnl when you open a terminal? ${YLW}[y/N]${RST} "
 read -r autolaunch_choice < /dev/tty
 
+want_autolaunch=0
 if [[ "$autolaunch_choice" =~ ^[Yy]$ ]]; then
-    configure_autolaunch "$HOME/.zprofile"
-    configure_autolaunch "$HOME/.zshrc"
-    configure_autolaunch "$HOME/.bashrc"
-    configure_autolaunch "$HOME/.bash_profile"
-    echo -e "  ${ICON_SUCCESS} Auto-launch enabled"
-    echo -e "  ${CLR_DIM}You can toggle this later with !autolaunch inside termnl${CLR_RESET}"
-else
-    echo -e "  ${CLR_DIM}Skipped. Type 'termnl' to start manually.${CLR_RESET}"
-    echo -e "  ${CLR_DIM}You can enable auto-launch later with !autolaunch inside termnl${CLR_RESET}"
+    want_autolaunch=1
 fi
 
-# Completion
-echo ""
-echo -e "  ${CLR_INFO}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${CLR_RESET}"
-echo ""
-echo -e "  ${CLR_SUCCESS}${CLR_BOLD}✓ Installation complete!${CLR_RESET}"
-echo ""
-if [[ "$autolaunch_choice" =~ ^[Yy]$ ]]; then
-    echo -e "  ${ICON_ARROW} Open a new terminal window to start termnl"
+for rc in "$HOME/.zprofile" "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile"; do
+    patch_shell_rc "$rc" "$want_autolaunch"
+done
+
+if [ "$want_autolaunch" = "1" ]; then
+    echo -e "  ${OK} Auto-launch enabled"
+    echo -e "  ${DIM}Toggle later with !autolaunch inside termnl${RST}"
 else
-    echo -e "  ${ICON_ARROW} Run: ${CLR_INFO}${CLR_BOLD}termnl${CLR_RESET}"
+    echo -e "  ${DIM}Skipped. Type 'termnl' to start manually.${RST}"
+    echo -e "  ${DIM}Enable later with !autolaunch inside termnl${RST}"
+fi
+
+# --- Done ---
+
+echo ""
+echo -e "  ${DIM}──────────────────────────────────────────────${RST}"
+echo ""
+echo -e "  ${GRN}${B}✓ Installation complete!${RST}"
+echo ""
+if [ "$want_autolaunch" = "1" ]; then
+    echo -e "  ${ARROW} Open a new terminal window to start termnl"
+else
+    echo -e "  ${ARROW} Run: ${CYN}${B}termnl${RST}"
 fi
 echo ""
